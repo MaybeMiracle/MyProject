@@ -1,0 +1,740 @@
+#include "iostream"
+#include "opencv2/opencv.hpp" 
+
+using namespace cv;
+using namespace std;
+
+struct point
+{
+	int x;
+	int y;
+}queue[130000];
+point deletePoint[130000];
+point deleteTestPoint[130000];
+int num = 0;
+int PointNum = 0;
+
+struct PP
+{
+    double rmin, gmin, bmin;
+    double rmax, gmax, bmax;
+}P[10000];
+int PPnum = 0;
+
+int d[8][2] = {{-1,1},{-1,0},{-1,-1},{0,-1},{1,-1},{1,0},{1,1},{0,1}};
+int l[24][2] = {
+	             {-2,-2},{-2,-1},{-2,0},{-2,1},{-2,2},
+                 {-1,-2},{-1,-1},{-1,0},{-1,1},{-1,2},
+                 {0,-2},{0,-1},{-0,1},{0,2},
+                 {-1,-2},{1,-1},{1,0},{1,1},{1,2},
+                 {-2,-2},{2,-1},{2,0},{2,1},{2,2}
+               };
+double Rmin = -1.0, Gmin = -1.0, Bmin = -1.0;
+double Rmax = 10000.0, Gmax = 10000.0, Bmax = 10000.0;
+bool vis[1000][1000];
+bool visLine[1000][1000];
+double eps = 0.00001;
+
+struct Sort
+{
+	int num;
+	point Sp[1505];
+}sor[130000];
+int sortNum = 0;
+
+int SortPointNum = 0;
+int TestPointNum = 0;
+bool TestPointVis[1000][1000];
+bool fab(double a1, double a2, double b1, double b2)
+{
+    if(a1 - a2 > b1) return false;
+	  if(a1 - a2 < b2) return false;
+	  return true;
+}
+
+void BfsOfDelePoint(Mat &mat, IplImage* image, int x, int y)
+{
+	int head = 0, tail = 0;
+	bool TemVis[1000][1000];
+	memset(TemVis, false, sizeof(TemVis));
+	TestPointNum = 0;
+	deleteTestPoint[TestPointNum].x = x;
+	deleteTestPoint[TestPointNum].y = y;
+	TestPointNum++;
+	TemVis[x][y] = true;
+	queue[head].x = x;
+	queue[head].y = y;
+	head ++;
+	while(tail<head){
+
+		point temp1=queue[tail];
+		tail++;
+		int k;
+		for(k=0; k<24; k++){
+
+			point temp2;
+			temp2.x = temp1.x + l[k][0];
+			temp2.y = temp1.y + l[k][1]; 
+
+			if(!vis[temp2.x][temp2.y] && temp2.x>=0 && temp2.y<image->width && 
+				temp2.x<image->height && temp2.y>=0 && !TemVis[temp2.x][temp2.y]){
+			    //&& !TestPointVis[temp2.x][temp2.y]){		
+
+				TemVis[temp2.x][temp2.y] = true;
+				queue[head] = temp2; 
+				head++;	 				
+				deleteTestPoint[TestPointNum].x = temp2.x;
+	            deleteTestPoint[TestPointNum].y = temp2.y;	 
+				TestPointNum++;
+			}
+		}
+	}
+}
+bool vvis[1000][1000];
+void BfsOfAddPoint(Mat &mat, IplImage* image, int x, int y, double r, double g, double b)
+{
+	int head = 0, tail = 0;
+	CvScalar s;
+	bool TemVis[1000][1000];
+	memset(TemVis, false, sizeof(TemVis));
+	TemVis[x][y] = true;
+	PointNum = 0;
+	deletePoint[PointNum].x = x;
+	deletePoint[PointNum].y = y;
+	PointNum++;
+	queue[head].x = x;
+	queue[head].y = y;
+	head ++;
+	while(tail<head){
+
+		point temp1=queue[tail];
+		tail++;
+		int k;
+		for(k=0; k<24; k++){
+
+			point temp2;
+			temp2.x = temp1.x + l[k][0];
+			temp2.y = temp1.y + l[k][1]; 
+			if(!vvis[temp2.x][temp2.y] && temp2.x>=0 && temp2.y<image->width && temp2.x<image->height && temp2.y>=0 && !TemVis[temp2.x][temp2.y]){
+				
+				s=cvGet2D(image, temp2.x, temp2.y);
+	            double R = s.val[0];
+	            double G = s.val[1];
+	            double B = s.val[2];
+	            if(fab(b, B, 20, -20) && fab(r, R, 20, -20) && fab(g,G, 20, -20)){
+					if(B <= 125 && R <= 125 && G <= 125){
+					r = R;
+					g = G;
+					b = B;
+		            deletePoint[PointNum].x = temp2.x;
+	                deletePoint[PointNum].y = temp2.y;
+	                PointNum++;
+				    TemVis[temp2.x][temp2.y] = true;
+				    queue[head] = temp2; 
+				    head++;	   
+				}
+				}
+			}
+		}
+	}
+}
+bool JudgeIsLine(double x1, double y1, double x2, double y2)
+{
+    double DianJi = x1 * y1 + x2 * y2;
+	if(DianJi < 0){
+	    DianJi = - DianJi;
+	}
+	double sqr = sqrt((x1 * x1 + y1 * y1) * (x2 * x2 + y2 * y2));
+	if(sqr < eps){
+	    return true;
+	}
+	double cos = DianJi / sqr;
+	if(cos >= 0.966){
+	    return true;
+	}
+	else{
+	    return false;
+	}
+}
+
+void BFS(Mat &mat, IplImage* image, int x, int y, double r, double g, double b)
+{
+	int head = 0, tail = 0;
+	CvScalar s;
+	bool TemVis[1000][1000];
+	memset(TemVis, false, sizeof(TemVis));
+	Rmin = r;
+	Rmax = r;
+	Gmin = g;
+	Gmax = g;
+	Bmin = b;
+	Bmax = b;
+	double rav = r;
+	double gav = g;
+	double bav = b;
+	TemVis[x][y] = true;
+	PointNum = 0;
+	deletePoint[PointNum].x = x;
+	deletePoint[PointNum].y = y;
+	PointNum++;
+	queue[head].x = x;
+	queue[head].y = y;
+	head ++;
+	while(tail<head){
+
+		point temp1=queue[tail];
+		tail++;
+		int k;
+		for(k=0; k<8; k++){
+
+			point temp2;
+			temp2.x = temp1.x + d[k][0];
+			temp2.y = temp1.y + d[k][1]; 
+			if(!vvis[temp2.x][temp2.y] && temp2.x>=0 && temp2.y<image->width && temp2.x<image->height && temp2.y>=0 && !TemVis[temp2.x][temp2.y]){
+				
+				s=cvGet2D(image, temp2.x, temp2.y);
+	            double R = s.val[0];
+	            double G = s.val[1];
+	            double B = s.val[2];
+	            if(fab(b, B, 20, -15) && fab(r, R, 20, -15) && fab(g,G, 20, -15)
+			     && fab(bav/PointNum, B, 20, -10) && fab(rav/PointNum, R, 20, -10) && fab(gav/PointNum,G, 20, -10)){
+					rav += R;
+					bav += B;
+					gav += G;
+					if(Rmin > R){
+					    Rmin = R;
+					}
+					if(Rmax < R){
+					    Rmax = R;
+					}
+					if(Gmin > G){
+					    Gmin = G;
+					}
+					if(Gmax < G){
+					    Gmax = G;
+					}
+					if(Bmin > B){
+					    Bmin = B;
+					}
+					if(Bmax < B){
+					    Bmax = B;
+					}
+		            deletePoint[PointNum].x = temp2.x;
+	                deletePoint[PointNum].y = temp2.y;
+	                PointNum++;
+				    TemVis[temp2.x][temp2.y] = true;
+				    queue[head] = temp2; 
+				    head++;	   
+				}
+			}
+		}
+	}
+}
+
+bool cmp(Sort a, Sort b)
+{
+	return a.num > b.num;
+}
+bool cmp2(point a, point b)
+{
+	if(a.y < b.y) return true;
+	if(a.y == b.y && a.x > b.x) return true;
+	return false;
+}
+bool cmp3(point a, point b)
+{
+	if(a.x < b.x) return true;
+	if(a.x == b.x && a.y < b.y) return true;
+	return false;
+}
+void DeleteZone(Mat &mat, IplImage* image)
+{
+	CvScalar s;
+	memset(vis, false, sizeof(vis));
+	P[PPnum].rmin = 200.0;
+	P[PPnum].gmin = 200.0;
+	P[PPnum].bmin = 200.0;
+    P[PPnum].rmax = 255.0;
+	P[PPnum].gmax = 255.0;
+	P[PPnum].bmax = 255.0;
+	PPnum++;
+	for(int x = 0; x < image->height; x++){
+        for(int y = 0; y < image->width; y++){
+			if(vis[x][y] == true){
+			    continue;
+			}
+			PointNum = 0;
+			s=cvGet2D(image,x,y); 
+			double R = s.val[0];
+	        double G = s.val[1];
+	        double B = s.val[2];			
+			BFS(mat, image, x, y, R, G, B);
+			//cout<<x<<","<<y<<endl;
+			if(PointNum >= 2000){
+				P[PPnum].rmin = Rmin;
+				P[PPnum].gmin = Gmin;
+				P[PPnum].bmin = Bmin;
+                P[PPnum].rmax = Rmax;
+				P[PPnum].gmax = Gmax;
+				P[PPnum].bmax = Bmax;
+				PPnum++;
+				for(int Pnum = 0; Pnum < PointNum; Pnum++){				
+					vis[deletePoint[Pnum].x][deletePoint[Pnum].y] = true;
+				}
+			}
+			else if(PointNum > 20){
+				SortPointNum += PointNum;
+			    sor[sortNum].num = PointNum;
+				for(int Pnum = 0; Pnum < PointNum; Pnum++){				
+					sor[sortNum].Sp[Pnum].x = deletePoint[Pnum].x;
+					sor[sortNum].Sp[Pnum].y = deletePoint[Pnum].y;
+				}
+				sortNum++;
+			}
+			//deleteline
+			/*if(PointNum >= 70 && PointNum <= 800){
+				if(deletePoint[ PointNum - 1].y - deletePoint[0].y > 70){
+				    int LnumxMax = 0;
+					int LnumyMax = 0;
+				    for(int i = 0; i < PointNum; i++){
+			            int Lnumx = 0;
+						int Lnumy = 0;
+						for(int j = 0; j < PointNum; j++){
+							if(deletePoint[j].y == deletePoint[i].y){
+							    Lnumy++;								
+							}
+							if(deletePoint[j].x == deletePoint[i].x){
+							    Lnumx++;								
+							}
+							if(Lnumx == 2){
+								LnumxMax++;
+							}
+							if(Lnumy == 2){
+								LnumyMax++;
+							}
+						}
+					}
+				    if(LnumxMax >=  PointNum/3 || LnumyMax >=  PointNum/3){
+				        P[PPnum].rmin = Rmin;
+				        P[PPnum].gmin = Gmin;
+			         	P[PPnum].bmin = Bmin;
+                        P[PPnum].rmax = Rmax;
+			        	P[PPnum].gmax = Gmax;
+			        	P[PPnum].bmax = Bmax;
+				        PPnum++;
+				        for(int Pnum = 0; Pnum < PointNum; Pnum++){				
+					        vis[deletePoint[Pnum].x][deletePoint[Pnum].y] = true;
+						}
+				    }
+				}
+			}*/
+		}
+	}
+	//delete zone
+	sort(sor,sor + sortNum,cmp);
+	if(sortNum != 0){
+	int avergeNum = SortPointNum / sortNum;
+	for(int i = 0; i < sortNum/2; i++){
+		if(sor[i].num > 800){
+     	    if(sor[i].num + avergeNum/2 > 2*avergeNum){
+	            for(int Pnum = 0; Pnum < sor[i].num; Pnum++){				
+		            vis[sor[i].Sp[Pnum].x][sor[i].Sp[Pnum].y] = true;
+				}
+			}
+		}
+	}
+	}
+}
+//根据image的像素值给mat赋值，通过a值生成透明图像
+void createAlphaMat(Mat &mat, IplImage* image)
+{
+	DeleteZone(mat, image);
+	/*for(int x = 0; x < image->height; x++){
+		cout<<endl;
+        for(int y = 0; y < image->width; y++){	
+			CvScalar s;
+            s=cvGet2D(image,x,y); 
+            double r = s.val[0];
+            double g = s.val[1];
+            double b = s.val[2];
+			cout<<r<<","<<g<<","<<b<<")";
+		}
+	}*/
+
+	//delete noisy points
+	for(int x = 0; x < image->height; x++){
+		//cout<<endl;
+        for(int y = 0; y < image->width; y++){			
+		    CvScalar s;
+            s=cvGet2D(image,x,y); 
+            double r = s.val[0];
+            double g = s.val[1];
+            double b = s.val[2];			
+			//cout<<r<<","<<g<<","<<b<<")";
+			//cout<<r<<",";
+			//delete background points
+			for(int i = 0; i < PPnum; i++){
+				if((r>=(P[i].rmin+5) && r<=P[i].rmax) && (g>=(P[i].rmin+5) && g<=P[i].gmax) && (b>=(P[i].rmin+5) && b<=P[i].bmax)){
+				    vis[x][y] = true;
+					break;
+				}
+			}
+			//delete gray points
+			if(r >= 165 && r <= 220 && g >= 165 && g <= 220 && b >= 165 && b <= 220){
+			    vis[x][y] = true;
+		    }		
+
+			double rr = r;
+			double gg = g;
+			double bb = b;
+			int nu = 0;
+			int n = 3;
+			for(int yy = y + 1; yy < image->width; yy++){
+			    s=cvGet2D(image,x,yy); 
+                double r1 = s.val[0];
+                double g1 = s.val[1];
+                double b1 = s.val[2];
+				if(fab(rr,r1,5,-5) && fab(gg,g1,5,-5) && fab(bb,b1,5,-5)){
+				    nu++;
+					rr = r1;
+					gg = g1;
+					bb = b1;
+					n = 3;
+				}
+				else{
+				    n--;
+				}
+				if(n == 0){
+				    break;
+				}
+			}
+			if(nu >= 200){
+				for(int i = 1; i <= nu; i++){
+				    vis[x][y+i] = true;
+				}
+				y = y + nu - 1;
+			}
+	    }		
+    }
+
+	//delete alone points
+	for(int x = 0; x < image->height; x++){
+        for(int y = 0; y < image->width; y++){					
+			if(vis[x][y] == false){
+				TestPointNum = 0;
+				BfsOfDelePoint(mat, image, x, y);
+				for(int Pnum = 0; Pnum < TestPointNum; Pnum++){	
+					if(deleteTestPoint[Pnum].x == 0 || deleteTestPoint[Pnum].y == 0 
+						|| deleteTestPoint[Pnum].x == image->height-1 || deleteTestPoint[Pnum].x == image->width-1){
+							for(int Pnum = 0; Pnum < TestPointNum; Pnum++){
+							    vis[deleteTestPoint[Pnum].x][deleteTestPoint[Pnum].y] = true;
+								break;
+							}
+					}
+				}
+				/*if(TestPointNum > 16){					
+			    	for(int Pnum = 0; Pnum < TestPointNum; Pnum++){				
+				     	TestPointVis[deleteTestPoint[Pnum].x][deleteTestPoint[Pnum].y] = true;
+					}
+				}
+				else{
+					if(TestPointNum > 4){
+						int kk = 0;
+					    for(int i = -10; i <= 10; i++)
+							for(int j = -10; j <= 10; j++){
+							    int xx = x + i;
+								int yy = y + j;
+								if(xx >= 0 && yy >= 0 && xx < image->height && yy < image->width){
+								    if(vis[xx][yy] == false){
+								        kk++;
+									}
+								}
+							}
+							if(kk >= TestPointNum + 10){
+							    continue;
+							}
+					}
+				    vis[x][y] = true;
+				}		*/				
+		    }
+		}
+	}
+	
+	for(int x = 1; x < image->height - 1; x++){
+        for(int y = 1; y < image->width - 1; y++){
+			if(vis[x][y] == false){
+				if(vis[x-1][y] == true && vis[x+1][y] == true 
+					&& vis[x][y-1] == true && vis[x][y+1] == true
+					&& vis[x-1][y+1] == true && vis[x+1][y+1] == true 
+					&& vis[x+1][y-1] == true && vis[x-1][y+1] == true){
+				   vis[x][y] = true;
+				}
+			}
+		}
+	}
+
+	double AvergeR = 0.0;
+	double AvergeG = 0.0;
+	double AvergeB = 0.0;
+	double AvergeNum = 0.0;
+	for(int x = 0; x < image->height; x++){
+        for(int y = 0; y < image->width; y++){
+			if(vis[x][y] == false){
+			    CvScalar s;
+                s=cvGet2D(image,x,y); 
+                double r = s.val[0];
+                double g = s.val[1];
+                double b = s.val[2];
+				AvergeNum += 1.0;
+				AvergeR += r;
+				AvergeG += g;
+				AvergeB += b;
+			}
+		}
+	}
+	AvergeR = AvergeR / AvergeNum;
+	AvergeG = AvergeG / AvergeNum;
+	AvergeB = AvergeB / AvergeNum;
+	for(int x = 0; x < image->height; x++){
+        for(int y = 0; y < image->width; y++){
+			if(vis[x][y] == false){
+			    CvScalar s;
+                s=cvGet2D(image,x,y); 
+                double r = s.val[0];
+                double g = s.val[1];
+                double b = s.val[2];
+				if(!(fab(r, AvergeR, 50, -120) && fab(g, AvergeG, 50, -120) && fab(b, AvergeB, 50, -120))){
+				    vis[x][y] = true;
+				}
+			}
+		}
+	}
+
+	for(int x = 0; x < image->height; x++){
+        for(int y = 0; y < image->width; y++){					
+			if(vis[x][y] == false){
+	            int nn = 0;
+				int mm = 2;
+				for(int yy = y; yy < image->width; yy++){
+					if(vis[x][yy] == false){
+					    nn++;
+						mm = 2;
+					}
+					else{
+					    mm--;
+					}
+					if(mm == 0)
+					    if(nn >= 20){
+							int nu1 = 0;
+							int nu2 = 0;
+							if(x > 0){
+								for(int k = y; k < yy; k++){
+									if(vis[x-1][k] == false){
+									    nu1++;
+									}
+								}
+							}
+							if(x < image->height - 1){
+								for(int k = y; k < yy; k++){
+									if(vis[x+1][k] == false){
+									    nu2++;
+									}
+								}
+							}
+							if(nu1 <= 2 && nu2 <= 2){
+								for(int k = 0; k < nn; k++){
+								    vis[x][y + k] = true;
+								}
+							}
+						}						
+					}
+				    if(nn >= 20){
+							int nu1 = 0;
+							int nu2 = 0;
+							if(x > 0){
+								for(int k = 0; k < nn; k++){
+									if(vis[x-1][y + k] == false){
+									    nu1++;
+									}
+								}
+							}
+							if(x < image->height - 1){
+								for(int k = 0; k < nn; k++){
+									if(vis[x+1][y + k] == false){
+									    nu2++;
+									}
+								}
+							}
+							if(nu1 <= 2 && nu2 <= 2){
+								for(int k = 0; k < nn; k++){
+								    vis[x][y + k] = true;
+								}
+							}
+						}
+			}
+		}
+	}
+	
+	memset(vvis, false, sizeof(vvis));
+	for(int x = 1; x < image->height - 1; x++){
+        for(int y = 1; y < image->width - 1; y++){
+			if(vis[x][y] == false && vvis[x][y] == false){
+
+				CvScalar s;
+				s=cvGet2D(image,x,y); 
+			    double R = s.val[0];
+	            double G = s.val[1];
+	            double B = s.val[2];			
+			    BfsOfAddPoint(mat, image, x, y, R, G, B);				
+				if(PointNum >= 5){
+					TestPointNum = 0;
+				    BfsOfDelePoint(mat, image, x, y);
+					if(PointNum - TestPointNum >= 10){
+					    continue;
+					}
+					for(int i = 0; i < PointNum; i++){
+						vis[deletePoint[i].x][deletePoint[i].y] = false;
+						vvis[deletePoint[i].x][deletePoint[i].y] = true;
+					}
+				}
+			}
+		}
+	}
+
+	for(int x = 1; x < image->height - 1; x++){
+        for(int y = 1; y < image->width - 1; y++){
+			if(vis[x][y] == false){
+				if(vis[x-1][y] == true && vis[x+1][y] == true 
+					&& vis[x][y-1] == true && vis[x][y+1] == true
+					&& vis[x-1][y+1] == true && vis[x+1][y+1] == true 
+					&& vis[x+1][y-1] == true && vis[x-1][y+1] == true){
+				   vis[x][y] = true;
+				}
+			}
+		}
+	}
+	//create new image
+	for(int x = 0; x < image->height; x++){
+        for(int y = 0; y < image->width; y++){
+
+			Vec4b& rgba = mat.at<Vec4b>(x, y);
+
+			if(vis[x][y] == true){				
+			    rgba[0] = saturate_cast<uchar>(255); 
+                rgba[1] = saturate_cast<uchar>(255);
+                rgba[2] = saturate_cast<uchar>(255);
+				rgba[3] = saturate_cast<uchar>(0);
+			}
+			else{        
+     			rgba[0] = saturate_cast<uchar>(0); 
+                rgba[1] = saturate_cast<uchar>(0);
+                rgba[2] = saturate_cast<uchar>(0);
+				rgba[3] = saturate_cast<uchar>(255);
+			}
+		}
+	}
+}
+
+int main()
+{   
+	//int argc, char const *argv[]
+	//透明  1,4,5,6,7,8,9,10
+	IplImage* ImageWord = cvLoadImage("D:\\ww.jpg");
+	cvNamedWindow("aaa",1);
+	cvShowImage("aaa",ImageWord);
+    Mat src = imread("D:\\ww.jpg");
+    Mat mat(src.rows, src.cols, CV_8UC4);
+    createAlphaMat(mat, ImageWord);
+    vector<int> compression_params;
+    compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+    compression_params.push_back(9);   
+    //imwrite("D:\\ww1.png", mat, compression_params);
+	IplImage* qImg;
+    qImg = &IplImage(mat);
+	//cvNamedWindow(str2,1);
+	//cvShowImage(str2,ImageWord);
+	cvNamedWindow("bbb",1);
+	cvShowImage("bbb",qImg);
+	//暗角
+	/*cv::Mat image = cv::imread("D:\\wwj.jpg");
+    cv::Mat img1 = cv::imread("D:\\zz.png");
+    Mat logo;
+	resize(img1,logo,Size(image.cols,image.rows),0,0,CV_INTER_LINEAR);
+    cv::Mat imageROI;
+    imageROI = image(cv::Rect(0,0,logo.cols,logo.rows));
+    cv::addWeighted(logo, 0.6, imageROI, 0.5, 0, imageROI);*/
+    //imwrite("D:\\ww2.png", imageROI, compression_params);
+	//IplImage* qImg11;
+    //qImg11 = &IplImage(imageROI);
+	//cvNamedWindow(str2,1);
+	//cvShowImage(str2,ImageWord);
+	//cvNamedWindow("ccc",1);
+	//cvShowImage("ccc",qImg11);
+	//暗角
+	//IplImage* ImageWord = cvLoadImage("D:\\wwj.jpg");
+    //Mat src = imread("D:\\wwj.jpg");
+    /*采用自己设置的参数来保存图片*/
+    //Mat mat(src.rows, src.cols, CV_8UC4);
+	//createAnJiao();
+ //   createAlphaMat(mat, ImageWord);
+ //   vector<int> compression_params;
+ //   compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+ //   compression_params.push_back(9);    //png格式下，默认的参数为3.
+ //   //imwrite("D:\\bbb.png", mat, compression_params);
+	//IplImage* qImg;
+ //   qImg = &IplImage(mat);
+	////cvNamedWindow(str2,1);
+	////cvShowImage(str2,ImageWord);
+	//cvNamedWindow("aaa",1);
+	//cvShowImage("aaa",qImg);
+
+
+
+	////模糊
+ //   IplImage *PriImgBackground = cvLoadImage("D:\\bb.jpg");
+	////改变比例
+	//IplImage *ImgBackground=0;  
+ //   ImgBackground=cvCreateImage(cvSize(PriImgBackground->width,PriImgBackground->height),IPL_DEPTH_8U,3);  
+ //   cvResize(PriImgBackground,ImgBackground,CV_INTER_LINEAR);  
+
+ //   //需要把这个图片放在这个project下面，比如我的：&user name\Documents\Visual Studio 2010\Projects\opencvhello\opencvhello文件夹里面
+ //   //定义两个窗口，自由大小。本函数由HighGUI库提供。第二个参数如果为0，则窗口大小不会因图像的大小而改变。
+ //   cvNamedWindow("Image-out",CV_WINDOW_AUTOSIZE);
+ //   //先显示原jpg图
+ //   //cvShowImage("Image-in",img);
+ //   //分配空间存储处理后的图像
+ //   IplImage *out=cvCreateImage(
+ //       cvGetSize(ImgBackground),//当前图像大小
+ //       IPL_DEPTH_8U,//各通道每个像素点的类型
+ //       3//通道总数
+ //   );
+ //   //进行高斯处理，处理的是指针img指向的内存，将处理后的数据交给out指针指向的内存，对每个像素周围3x3的区域进行高斯平滑处理（其实输入输出图像可以是相同的）
+ //   cvSmooth(ImgBackground,out,CV_GAUSSIAN,5,5);
+	
+    waitKey(0);
+    return 0;
+}
+//int main(int argc, char const *argv[])
+//{   
+//	//透明
+//	IplImage* ImageWord = cvLoadImage(argv[1]);
+//    Mat src = imread(argv[1]);
+//    Mat mat(src.rows, src.cols, CV_8UC4);
+//    createAlphaMat(mat, ImageWord);
+//    vector<int> compression_params;
+//    compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+//    compression_params.push_back(9);   
+//    imwrite(argv[2], mat, compression_params);
+//
+//	//暗角
+//	cv::Mat image = cv::imread(argv[3]);
+//    cv::Mat img1 = cv::imread(argv[5]);
+//    Mat logo;
+//	resize(img1,logo,Size(image.cols,image.rows),0,0,CV_INTER_LINEAR);
+//    cv::Mat imageROI;
+//    imageROI = image(cv::Rect(0,0,logo.cols,logo.rows));
+//    cv::addWeighted(logo, 0.6, imageROI, 0.5, 0, imageROI);
+//    imwrite(argv[4], imageROI, compression_params);
+//
+//    return 0;
+//}
